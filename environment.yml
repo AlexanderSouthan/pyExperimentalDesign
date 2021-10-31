@@ -1,0 +1,6 @@
+name: pyExperimentalDesign
+dependencies:
+  - numpy
+  - pandas
+  - scipy
+  - statsmodels
