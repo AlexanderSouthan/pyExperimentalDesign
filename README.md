@@ -1,4 +1,5 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+![build workflow](https://github.com/AlexanderSouthan/pyExperimentalDesign/actions/workflows/python-package-conda.yml/badge.svg)
 
 # pyExperimentalDesign
 
