@@ -1,4 +1,5 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+[![Build Status](https://app.travis-ci.com/AlexanderSouthan/pyExperimentalDesign.svg?branch=master)](https://app.travis-ci.com/AlexanderSouthan/pyExperimentalDesign)
 
 # pyExperimentalDesign
 
