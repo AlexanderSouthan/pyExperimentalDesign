@@ -11,6 +11,7 @@ import scipy
 import itertools
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
+from statsmodels.tools.eval_measures import rmse
 
 
 class experimental_design:
@@ -175,7 +176,7 @@ class experimental_design:
             max_value = self.param_info.at[curr_row, 'upper_bound']
             min_value = self.param_info.at[curr_row, 'lower_bound']
             self.data[self.param_info.at[curr_row, 'coded_name']] = round(
-                2/(max_value-min_value)*(self.data[curr_row]-max_value)+1, 4)
+                2/(max_value-min_value)*(self.data[curr_row]-max_value)+1, 10)
 
     def encode_categ_columns(self, levels, coded_values):
         """
@@ -357,6 +358,17 @@ class experimental_design:
         return (front_factors *
                 self.response_info.at[response, 'model_objects'].params).sum()
 
+    def model_metrics(self):
+        model_metrics = pd.DataFrame([], columns=['R^2', 'R^2_adj', 'RMSE'])
+        for curr_response in self.response_info.index:
+            model_metrics.at[curr_response, 'R^2'] = self.response_info.at[
+                curr_response, 'model_objects'].rsquared
+            model_metrics.at[curr_response, 'R^2_adj'] = self.response_info.at[
+                curr_response, 'model_objects'].rsquared_adj
+            model_metrics.at[curr_response, 'RMSE'] = rmse(
+                self.predicted()[curr_response], self.actual()[curr_response])
+        return model_metrics
+
     def residuals(self, kind='externally_studentized'):
         """
         Return the the residuals of the model used for data analysis.
@@ -452,3 +464,126 @@ class experimental_design:
                 np.sqrt(2)*scipy.special.erfinv(
                     2*resid_percentiles[curr_response].values/100-1))
         return theo_resid_percentiles
+
+    def leverages(self):
+        leverages = pd.DataFrame([], columns=self.response_info.index,
+                                 index=self.data.index, dtype='float')
+        for curr_response in leverages.columns:
+            leverages[curr_response] = self.response_info.at[
+                curr_response, 'influences'].hat_matrix_diag
+        return leverages
+
+    def cooks_distances(self):
+        cooks_distances = pd.DataFrame([], columns=self.response_info.index,
+                                       index=self.data.index, dtype='float')
+        for curr_response in cooks_distances.columns:
+            cooks_distances[curr_response] = self.response_info.at[
+                curr_response, 'influences'].cooks_distance[0]
+        return cooks_distances
+
+    def dffits(self):
+        dffits = pd.DataFrame([], columns=self.response_info.index,
+                              index=self.data.index, dtype='float')
+        for curr_response in dffits.columns:
+            dffits[curr_response] = self.response_info.at[
+                curr_response, 'influences'].dffits[0]
+        return dffits
+
+    def dfbetas(self):
+        dfbetas = pd.DataFrame([], columns=self.response_info.index,
+                               index=self.data.index, dtype='float')
+        for curr_response in dfbetas.columns:
+            dfbetas[curr_response] = self.response_info.at[
+                curr_response, 'influences'].dfbetas
+        return dfbetas
+
+    def actual(self):
+        return self.data[self.response_info.index]
+
+    def predicted(self):
+        predicted = self.data[self.response_info.index + '_fitted']
+        predicted.columns = self.response_info.index
+        return predicted
+
+    def actual_vs_predicted(self, ax, response):
+        ax.plot(self.predicted()[response], self.actual()[response], ls='none',
+                marker='o')
+        x_min = min([self.predicted()[response].min(),
+                     self.actual()[response].min()])
+        x_max = max([self.predicted()[response].max(),
+                     self.actual()[response].max()])
+        ax.plot(np.linspace(x_min, x_max), np.linspace(x_min, x_max))
+        ax.set_xlabel(response + ' (predicted)')
+        ax.set_ylabel(response + ' (actual)')
+        ax.set_title('Actual vs. Predicted')
+        return ax
+
+    def residual_vs_quartile(self, ax, response,
+                             residual_kind='externally_studentized'):
+        resid = self.residuals(kind=residual_kind)[response]
+        theo_percentile = self.theo_residual_percentiles(
+            kind=residual_kind)[response]
+        ax.plot(resid, theo_percentile, ls='none', marker='o')
+        x_min = min([resid.min(), theo_percentile.min()])
+        x_max = max([resid.max(), theo_percentile.max()])
+        ax.plot(np.linspace(x_min, x_max), np.linspace(x_min, x_max))
+        ax.set_xlabel(response + ' ' + residual_kind + ' residuals')
+        ax.set_ylabel('Theoretical quantiles')
+        ax.set_title('Normal plot of residuals')
+        return ax
+
+    def residual_vs_run(self, ax, response,
+                        residual_kind='externally_studentized'):
+        ax.plot(self.residuals(kind=residual_kind)[response],
+                ls='-', marker='o')
+        ax.set_xlabel('Run')
+        ax.set_ylabel(response + ' ' + residual_kind + ' residuals')
+        ax.set_title('Residuals vs. Run')
+        ax.axhline(0, c='k', ls='--')
+        ax.axhline(3, c='r', ls='--')
+        ax.axhline(-3, c='r', ls='--')
+        return ax
+
+    def residual_vs_factor(self, ax, param, response,
+                           residual_kind='externally_studentized'):
+        ax.plot(self.data[param], self.residuals(
+            kind=residual_kind)[response], ls='none', marker='o')
+        ax.set_xlabel(param)
+        ax.set_ylabel(response + ' ' + residual_kind + ' residuals')
+        ax.set_title('Residuals vs. parameter')
+        ax.axhline(0, c='k', ls='--')
+        ax.axhline(3, c='r', ls='--')
+        ax.axhline(-3, c='r', ls='--')
+        return ax
+
+    def residual_vs_predicted(self, ax, response,
+                              residual_kind='externally_studentized'):
+        ax.plot(self.predicted()[response],
+                self.residuals(kind=residual_kind)[response], ls='none',
+                marker='o')
+        ax.set_xlabel(response + ' (predicted)')
+        ax.set_ylabel(response + ' ' + residual_kind + ' residuals')
+        ax.set_title('Residuals vs. predicted')
+        ax.axhline(0, c='k', ls='--')
+        ax.axhline(3, c='r', ls='--')
+        ax.axhline(-3, c='r', ls='--')
+        return ax
+
+    def box_cox_plot(self, ax, response):
+        lambdas = np.linspace(-3, 3, 50)
+        bc_llf = np.empty_like(lambdas)
+        for ii, curr_lambda in enumerate(lambdas):
+            bc_llf[ii] = scipy.stats.boxcox_llf(curr_lambda,
+                                                self.data[response])
+        _, best_lambda, conf_int = scipy.stats.boxcox(self.data[response],
+                                                      alpha=0.05)
+        ax.axvline(
+            best_lambda, c='k', ls='--', label='$\lambda=${}$\pm${}'.format(
+                round(best_lambda, 3), round(best_lambda-conf_int[0], 3)))
+        ax.axvline(conf_int[0], c='r', ls='--')
+        ax.axvline(conf_int[1], c='r', ls='--')
+        ax.plot(lambdas, bc_llf)
+        ax.set_xlabel('$\lambda$')
+        ax.set_ylabel('Box-Cox log-likelihood function')
+        ax.set_title('Box-Cox plot for power transformation')
+        ax.legend()
