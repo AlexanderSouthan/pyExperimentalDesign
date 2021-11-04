@@ -12,6 +12,7 @@ import itertools
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from statsmodels.tools.eval_measures import rmse
+import matplotlib.pyplot as plt
 
 
 class experimental_design:
@@ -505,7 +506,8 @@ class experimental_design:
         predicted.columns = self.response_info.index
         return predicted
 
-    def actual_vs_predicted(self, ax, response):
+    def actual_vs_predicted(self, response):
+        fig, ax = plt.subplots()
         ax.plot(self.predicted()[response], self.actual()[response], ls='none',
                 marker='o')
         x_min = min([self.predicted()[response].min(),
@@ -516,10 +518,12 @@ class experimental_design:
         ax.set_xlabel(response + ' (predicted)')
         ax.set_ylabel(response + ' (actual)')
         ax.set_title('Actual vs. Predicted')
-        return ax
 
-    def residual_vs_quartile(self, ax, response,
+        return (fig, ax)
+
+    def residual_vs_quartile(self, response,
                              residual_kind='externally_studentized'):
+        fig, ax = plt.subplots()
         resid = self.residuals(kind=residual_kind)[response]
         theo_percentile = self.theo_residual_percentiles(
             kind=residual_kind)[response]
@@ -530,10 +534,12 @@ class experimental_design:
         ax.set_xlabel(response + ' ' + residual_kind + ' residuals')
         ax.set_ylabel('Theoretical quantiles')
         ax.set_title('Normal plot of residuals')
-        return ax
 
-    def residual_vs_run(self, ax, response,
+        return (fig, ax)
+
+    def residual_vs_run(self, response,
                         residual_kind='externally_studentized'):
+        fig, ax = plt.subplots()
         ax.plot(self.residuals(kind=residual_kind)[response],
                 ls='-', marker='o')
         ax.set_xlabel('Run')
@@ -542,10 +548,12 @@ class experimental_design:
         ax.axhline(0, c='k', ls='--')
         ax.axhline(3, c='r', ls='--')
         ax.axhline(-3, c='r', ls='--')
-        return ax
 
-    def residual_vs_factor(self, ax, param, response,
+        return (fig, ax)
+
+    def residual_vs_factor(self, param, response,
                            residual_kind='externally_studentized'):
+        fig, ax = plt.subplots()
         ax.plot(self.data[param], self.residuals(
             kind=residual_kind)[response], ls='none', marker='o')
         ax.set_xlabel(param)
@@ -554,10 +562,12 @@ class experimental_design:
         ax.axhline(0, c='k', ls='--')
         ax.axhline(3, c='r', ls='--')
         ax.axhline(-3, c='r', ls='--')
-        return ax
 
-    def residual_vs_predicted(self, ax, response,
+        return (fig, ax)
+
+    def residual_vs_predicted(self, response,
                               residual_kind='externally_studentized'):
+        fig, ax = plt.subplots()
         ax.plot(self.predicted()[response],
                 self.residuals(kind=residual_kind)[response], ls='none',
                 marker='o')
@@ -567,9 +577,11 @@ class experimental_design:
         ax.axhline(0, c='k', ls='--')
         ax.axhline(3, c='r', ls='--')
         ax.axhline(-3, c='r', ls='--')
-        return ax
 
-    def box_cox_plot(self, ax, response):
+        return (fig, ax)
+
+    def box_cox_plot(self, response):
+        fig, ax = plt.subplots()
         lambdas = np.linspace(-3, 3, 50)
         bc_llf = np.empty_like(lambdas)
         for ii, curr_lambda in enumerate(lambdas):
@@ -587,3 +599,5 @@ class experimental_design:
         ax.set_ylabel('Box-Cox log-likelihood function')
         ax.set_title('Box-Cox plot for power transformation')
         ax.legend()
+
+        return (fig, ax)
