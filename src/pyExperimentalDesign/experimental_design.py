@@ -73,7 +73,7 @@ class experimental_design:
         self.model_strings_generic = pd.Series([], dtype='string')
         for curr_model in self.model_types:
             self.model_strings_generic[curr_model] = (
-                self.generate_model_string(curr_model))
+                model_string(curr_model, self.param_info['coded_name'].values))
 
         self.response_info=pd.DataFrame([], index=response_columns)
         self.response_info['coded_name'] = [
@@ -160,8 +160,8 @@ class experimental_design:
         self.response_info.loc[responses, 'model'] = new_models
         self.response_info.loc[responses, 'model_string'] = [
             self.model_strings_generic[
-                self.response_info.at[curr_name, 'model']].replace(
-                    'R', curr_name) for curr_name in responses]
+                self.response_info.at[curr_name, 'model']].model_string(
+                    ).replace('R', curr_name) for curr_name in responses]
 
     def encode_cont_columns(self):
         """
@@ -203,52 +203,6 @@ class experimental_design:
                 self.data.loc[
                     self.data[curr_col]==curr_level,
                     self.param_info.at[curr_col, 'coded_name']] = curr_coded
-
-    def generate_model_string(self, model_type):
-        """
-        Generate the model string necessary for OLS fitting.
-
-        Parameters
-        ----------
-        model_type : string
-            The model type, must be an element of self.model_types.
-
-        Returns
-        -------
-        model_string : string
-            The model string in the correct format to be used by the OLS
-            function in self.perform_anova.
-
-        """
-        if model_type not in self.model_types:
-            raise ValueError('No valid model_type given. Should be an element '
-                             'of {}, but is \'{}\'.'.format(
-                                 self.model_types, model_type))
-        model_string = 'R ~ '
-
-        # linear part is used for all models
-        for curr_name in self.param_info['coded_name']:
-            model_string += '{} + '.format(curr_name)
-
-        # two-factor interactions
-        if model_type in self.model_types[1:4]: #  '2fi', '3fi', 'quadratic'
-            for subset in itertools.combinations(
-                    self.param_info['coded_name'], 2):
-                model_string += '{} + '.format("*".join(i for i in subset))
-
-        # three-factor interactions
-        if model_type == self.model_types[2]:  # '3fi'
-            for subset in itertools.combinations(
-                    self.param_info['coded_name'], 3):
-                model_string += '{} + '.format("*".join(i for i in subset))
-
-        # quadratic terms
-        if model_type == self.model_types[3]:  # 'quadratic'
-            for curr_name in self.param_info['coded_name']:
-                model_string += 'I({}*{}) + '.format(curr_name, curr_name)
-        model_string = model_string[:-3]
-
-        return model_string
 
     def perform_anova(self, model=None):
         """
@@ -601,3 +555,124 @@ class experimental_design:
         ax.legend()
 
         return (fig, ax)
+
+
+class model_string:
+    def __init__(self, model_type, param_names):
+        """
+        Initialize model_string instance.
+
+        Parameters
+        ----------
+        model_type : string
+            The model type, must be an element of self.model_types.
+        param_names : list of string
+            The parameter names used in the model string.
+
+        Raises
+        ------
+        ValueError
+            If invalid model_Type is given.
+
+        Returns
+        -------
+        None.
+
+        """
+        # Careful when adding another model, all references to the following
+        # list have to be updated
+        self.model_types = ['linear', '2fi', '3fi', 'quadratic']
+        self.model_type = model_type
+        self.param_names = param_names
+
+        if self.model_type not in self.model_types:
+            raise ValueError('No valid model_type given. Should be an element '
+                             'of {}, but is \'{}\'.'.format(
+                                 self.model_types, self.model_type))
+
+        param_numbers = np.arange(len(self.param_names))
+
+        self.param_combinations = pd.DataFrame(
+            [], columns=np.append(self.param_names, ['string']))
+
+        # linear part is used for all models
+        # for curr_name in self.param_names:
+        combi_array = np.diag(np.ones_like(self.param_names))
+        for ii, curr_name in enumerate(self.param_names):
+            self.param_combinations.at[curr_name, 'string'] = curr_name
+
+        # two-factor interactions
+        if self.model_type in self.model_types[1:4]: #  '2fi', '3fi', 'quadratic'
+            for subset in itertools.combinations(param_numbers, 2):
+                curr_idx = ':'.join(i for i in self.param_names[list(subset)])
+                curr_string = '*'.join(i for i in self.param_names[list(subset)])
+                self.param_combinations.at[curr_idx, 'string'] = curr_string
+
+                curr_combi = np.zeros_like(self.param_names)
+                curr_combi[list(subset)] = 1
+                combi_array = np.append(combi_array, [curr_combi], axis=0)
+
+        # three-factor interactions
+        if self.model_type == self.model_types[2]:  # '3fi'
+            for subset in itertools.combinations(param_numbers, 3):
+                curr_idx = ':'.join(i for i in self.param_names[list(subset)])
+                curr_string = '*'.join(i for i in self.param_names[list(subset)])
+                self.param_combinations.at[curr_idx, 'string'] = curr_string
+
+                curr_combi = np.zeros_like(self.param_names)
+                curr_combi[list(subset)] = 1
+                combi_array = np.append(combi_array, [curr_combi], axis=0)
+
+        # quadratic terms
+        if self.model_type == self.model_types[3]:  # 'quadratic'
+            for curr_name in self.param_names:
+                curr_idx = '{}:{}'.format(curr_name, curr_name)
+                curr_string = 'I({}*{})'.format(curr_name, curr_name)
+                self.param_combinations.at[curr_idx, 'string'] = curr_string
+
+            curr_combi = np.diag(np.full_like(self.param_names, 2))
+            combi_array = np.append(combi_array, curr_combi, axis=0)
+
+        self.param_combinations[self.param_names] = combi_array
+        self.param_combinations['mask'] = True
+
+    def model_string(self, response_name='R', combi_mask=None,
+                     check_hierarchy=True):
+        """
+        Generate the model string necessary for OLS fitting.
+
+        Parameters
+        ----------
+        response_name : string, optional
+            The parameter name used in the model string. The default is 'R'.
+        combi_mask : pd.Series
+            A series containing boolean values which define if certain
+            parameter combinations are included into the model string. The
+            index should be identical to the index of self.param_combinations.
+            The default is None, meaning that all parameter combinations are
+            included into the model string.
+        check_hierarchy : bool, optional
+            Defines if the model hierarchy is checked and corrected if
+            necessary. The deafult is True.
+
+        Returns
+        -------
+        model_string : string
+            The model string in the correct format to be used by the OLS
+            function in experimental_design.perform_anova.
+
+        """
+        if combi_mask is not None:
+            self.param_combinations['mask'] = combi_mask
+        if check_hierarchy:
+            self.check_hierarchy();
+        return '{} ~ {}'.format(
+            response_name, ' + '.join(
+                i for i in self.param_combinations.loc[
+                    self.param_combinations['mask'], 'string']))
+
+    def check_hierarchy(self):
+        # This method does nothing at the moment, but should use parameter
+        # and mask columns in self.param_combinations in the future to
+        # perform a model hierarchy check.
+        pass
