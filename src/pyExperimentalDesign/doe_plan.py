@@ -20,10 +20,10 @@ class doe_plan:
             raise ValueError('No parameter limits or levels given. At least '
                              'one of the two must be provided.')
         if param_cont is None:
-            param_cont = ['P{}'.format(ii+1) for ii in
+            param_cont = ['Param{}'.format(ii+1) for ii in
                           range(len(param_limits))]
         if param_categ is None:
-            param_categ = ['P{}'.format(jj+1) for jj in range(
+            param_categ = ['Param{}'.format(jj+1) for jj in range(
                 len(param_limits), len(param_limits)+len(param_levels))]
 
         param_cont_coded = ['P{}'.format(ii+1) for ii in
