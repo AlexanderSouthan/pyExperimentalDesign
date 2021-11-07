@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import itertools
 
-from .model_string import model_string
+from .model_tools import model_tools
 
 
 class doe_plan:
@@ -26,9 +26,9 @@ class doe_plan:
             param_categ = ['P{}'.format(jj+1) for jj in range(
                 len(param_limits), len(param_limits)+len(param_levels))]
 
-        param_cont_coded = ['coded{}'.format(ii+1) for ii in
+        param_cont_coded = ['P{}'.format(ii+1) for ii in
                             range(len(param_limits))]
-        param_categ_coded = ['coded{}'.format(jj+1) for jj in range(
+        param_categ_coded = ['P{}'.format(jj+1) for jj in range(
             len(param_limits), len(param_limits)+len(param_levels))]
 
 
@@ -150,20 +150,28 @@ class doe_plan:
             self.data_table = pd.concat(
                 level_dfs, ignore_index=True)
 
-    def simulate_response(self, response):
-        model = model_string(
+    def simulate_response(self, response, noise_level=1):
+        model = model_tools(
             '2fi',
-            self.param_cont['coded_name'].to_list() + self.param_categ['coded_name'].to_list(),
-            ['cont']*len(self.param_cont) + ['categ']*len(self.param_categ))
-        self.model=model
+            self.param_cont['coded_name'].to_list() +
+            self.param_categ['coded_name'].to_list(),
+            ['cont']*len(self.param_cont) + ['categ']*len(self.param_categ),
+            response_name=response)
+
         model_coefs = pd.Series(np.random.rand(len(model.param_combinations)),
                                 index=model.param_combinations.index)
+        model_coefs['Intercept'] = np.random.rand()
 
-        for curr_row in self.data_table.index[0:1]:
-            self.curr_coded = self.data_table.loc[
+        for curr_row in self.data_table.index:
+            curr_coded = self.data_table.loc[
                 curr_row, self.param_cont['coded_name'].to_list() +
                 self.param_categ['coded_name'].to_list()].to_list()
-            self.curr_front_factor = model.calc_front_factors(self.curr_coded)
-            # self.data_table.at[curr_row, response] = (*model_coefs).sum()
+            curr_front_factor = model.calc_front_factors(curr_coded)
+            self.data_table.at[curr_row, response] = (
+                curr_front_factor*model_coefs).sum()
 
-        return self.data_table
+        self.data_table[response] = pd.to_numeric(self.data_table[response])
+        self.data_table[response] += noise_level*np.random.normal(
+            size=len(self.data_table[response]))
+
+        return (self.data_table, model_coefs)

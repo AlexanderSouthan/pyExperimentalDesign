@@ -10,11 +10,11 @@ import pandas as pd
 import itertools
 
 
-class model_string:
+class model_tools:
     def __init__(self, model_type, param_names, param_types=None,
                  response_name='R'):
         """
-        Initialize model_string instance.
+        Initialize model_tools instance.
 
         Parameters
         ----------
@@ -65,7 +65,7 @@ class model_string:
 
         # linear part is used for all models
         # for curr_name in self.param_names:
-        combi_array = np.diag(np.ones_like(self.param_names))
+        combi_array = np.diag(np.ones_like(self.param_names, dtype='int'))
         self.param_combinations.loc[self.param_names, 'string'] = (
             self.param_names)
 
@@ -76,7 +76,7 @@ class model_string:
                 curr_string = '*'.join(i for i in self.param_names[list(subset)])
                 self.param_combinations.at[curr_idx, 'string'] = curr_string
 
-                curr_combi = np.zeros_like(self.param_names)
+                curr_combi = np.zeros_like(self.param_names, dtype='int')
                 curr_combi[list(subset)] = 1
                 combi_array = np.append(combi_array, [curr_combi], axis=0)
 
@@ -87,7 +87,7 @@ class model_string:
                 curr_string = '*'.join(i for i in self.param_names[list(subset)])
                 self.param_combinations.at[curr_idx, 'string'] = curr_string
 
-                curr_combi = np.zeros_like(self.param_names)
+                curr_combi = np.zeros_like(self.param_names, dtype='int')
                 curr_combi[list(subset)] = 1
                 combi_array = np.append(combi_array, [curr_combi], axis=0)
 
@@ -98,7 +98,8 @@ class model_string:
                 curr_string = 'I({}*{})'.format(curr_name, curr_name)
                 self.param_combinations.at[curr_idx, 'string'] = curr_string
 
-            curr_combi = np.diag(np.full_like(self.param_names, 2))
+            curr_combi = np.diag(np.full_like(self.param_names, 2,
+                                              dtype='int'))
             combi_array = np.append(combi_array, curr_combi, axis=0)
 
         self.param_combinations[self.param_names] = combi_array
@@ -228,7 +229,7 @@ class model_string:
         #             curr_value**2)
 
         # The following code tries to take advantage of the calculations done
-        # in the model_string objects already, however is much slower than
+        # in the model_tools objects already, however is much slower than
         # repeating the calculations as done above. It is preferred to the code
         # above nontheless in order to avoid inconsistency.
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Sat Oct 30 00:10:14 2021
+Created on Sat Oct 30 00:10:14 2021.
 
 @author: Alexander Southan
 """
@@ -8,13 +8,12 @@ Created on Sat Oct 30 00:10:14 2021
 import numpy as np
 import pandas as pd
 import scipy
-import itertools
 import statsmodels.api as sm
 from statsmodels.formula.api import ols
 from statsmodels.tools.eval_measures import rmse
 import matplotlib.pyplot as plt
 
-from .model_string import model_string
+from .model_tools import model_tools
 
 
 class doe_analysis:
@@ -51,7 +50,7 @@ class doe_analysis:
             all responses. Other allowed values are in self.model_types.
         p_limit : float, optional
             The upper threshold of allowed p values of the model terms. All
-            model terms with p values higher than the threshold will be 
+            model terms with p values higher than the threshold will be
             excluded from the analysis. Default is 1, resuling in no exclusion
             of any model term.
 
@@ -66,6 +65,10 @@ class doe_analysis:
                                  len(param_columns), len(param_types)))
 
         self.data = data
+        # The next step is important for input DataFrames that have a column
+        # Dtype of object which might occur in mixed Dtype DataFrames.
+        for curr_col in response_columns:
+            self.data[curr_col] = pd.to_numeric(self.data[curr_col])
         self.p_limit = p_limit
 
         self.param_info = pd.DataFrame([], index=param_columns)
@@ -79,7 +82,7 @@ class doe_analysis:
         # list have to be updated
         self.model_types = ['linear', '2fi', '3fi', 'quadratic']
 
-        self.response_info=pd.DataFrame([], index=response_columns)
+        self.response_info = pd.DataFrame([], index=response_columns)
         self.response_info['coded_name'] = [
             'R{}'.format(ii+1) for ii in range(len(response_columns))]
         if response_units is None:
@@ -88,7 +91,7 @@ class doe_analysis:
             self.response_info['unit'] = response_units
         self.response_info['model_type'] = None
         self.response_info['model'] = None
-        self.response_info['model_string'] = None
+        self.response_info['model_tools'] = None
         if models is None:
             models = ['2fi']*len(response_columns)
         self.replace_model(response_columns, models)
@@ -177,16 +180,16 @@ class doe_analysis:
                 'given, and only elements from {} are allowed.'.format(
                     new_models, self.model_types))
 
-        model_strings = []
+        model_tools_all = []
         for curr_response, curr_model in zip(responses, new_models):
-            model_strings.append(
-                model_string(curr_model, self.param_info['coded_name'].values,
-                             param_types=self.param_info['type'].values,
-                             response_name=curr_response))
+            model_tools_all.append(
+                model_tools(curr_model, self.param_info['coded_name'].values,
+                            param_types=self.param_info['type'].values,
+                            response_name=curr_response))
 
         self.response_info.loc[responses, 'model_type'] = new_models
-        self.response_info.loc[responses, 'model_string'] = (
-            model_strings)
+        self.response_info.loc[responses, 'model_tools'] = (
+            model_tools_all)
 
     def encode_cont_columns(self):
         """
@@ -198,11 +201,12 @@ class doe_analysis:
 
         """
         for curr_row in self.param_info[
-                self.param_info['type']=='cont'].index.values:
+                self.param_info['type'] == 'cont'].index.values:
             max_value = self.param_info.at[curr_row, 'upper_bound']
             min_value = self.param_info.at[curr_row, 'lower_bound']
-            self.data[self.param_info.at[curr_row, 'coded_name']] = round(
-                2/(max_value-min_value)*(self.data[curr_row]-max_value)+1, 10)
+            self.data[self.param_info.at[curr_row, 'coded_name']] = (
+                2/(max_value-min_value)*(self.data[curr_row]-max_value)+1
+                ).astype('float').round(10)
 
     def encode_categ_columns(self, levels, coded_values):
         """
@@ -222,17 +226,17 @@ class doe_analysis:
 
         """
         for curr_col in self.param_info[
-                self.param_info['type']=='categ'].index.values:
+                self.param_info['type'] == 'categ'].index.values:
             self.data[self.param_info.at[curr_col, 'coded_name']] = np.nan
             for curr_level, curr_coded in zip(levels, coded_values):
                 self.data.loc[
-                    self.data[curr_col]==curr_level,
+                    self.data[curr_col] == curr_level,
                     self.param_info.at[curr_col, 'coded_name']] = curr_coded
 
     def perform_anova(self, model=None):
         """
         Perform the actual ANOVA.
-        
+
         The ANOVA is done by the statsmodels anova_lm method. For this purpose,
         a model is used that is not necessarily linear.
 
@@ -262,49 +266,49 @@ class doe_analysis:
         for curr_response in self.response_info.index.values:
             counter = 1
             combi_mask = pd.Series(True, index=self.response_info.at[
-                curr_response,
-                'model_string'].param_combinations.index)
+                curr_response, 'model_tools'].param_combinations.index)
             while True:
                 # Generate model
                 # Categorial variables can be added with C(variable)
                 # see https://www.statsmodels.org/dev/example_formulas.html
                 # An intercept is added by default
-                curr_model_string = self.response_info.at[
-                    curr_response, 'model_string']
+                curr_model_tools = self.response_info.at[
+                    curr_response, 'model_tools']
                 curr_model = ols(
-                    curr_model_string.model_string(combi_mask=combi_mask),
+                    curr_model_tools.model_string(combi_mask=combi_mask),
                     data=self.data).fit()
                 # Perform the ANOVA
                 curr_anova = (sm.stats.anova_lm(curr_model, typ=2))
 
-                par_c = curr_model_string.param_combinations
+                par_c = curr_model_tools.param_combinations
                 curr_p_mask = ~curr_anova.index.isin(
-                    ['Residual'] + par_c[par_c['for_hierarchy']==True].index.to_list())
+                    ['Residual'] + par_c[par_c[
+                        'for_hierarchy'] == True].index.to_list())
                 curr_p = curr_anova.loc[curr_p_mask, 'PR(>F)']
-                if (curr_p<=self.p_limit).all():
-                    print('ANOVA runs for {}: {}'.format(curr_response, counter))
+                if (curr_p <= self.p_limit).all():
+                    print('ANOVA runs for {}: {}'.format(curr_response,
+                                                         counter))
                     break
                 else:
-                    combi_mask = curr_p<=self.p_limit
+                    combi_mask = curr_p <= self.p_limit
                     combi_mask = combi_mask.reindex(self.response_info.at[
                         curr_response,
-                        'model_string'].param_combinations.index,
+                        'model_tools'].param_combinations.index,
                         fill_value=False)
                     counter += 1
 
             self.response_info.at[curr_response, 'model'] = curr_model
             self.response_info.at[curr_response, 'anova_tables'] = curr_anova
             self.response_info.at[curr_response, 'influences'] = (
-                self.response_info.at[curr_response, 
+                self.response_info.at[curr_response,
                                       'model'].get_influence())
             self.data[curr_response + '_fitted'] = self.response_info.at[
                 curr_response, 'model'].fittedvalues
 
-
     def calc_model_value(self, response, coded_values):
         """
         Calculate one value the regression model predicts.
-        
+
         Calculation is done for one set of parameter settings.
 
         Parameters
@@ -323,9 +327,12 @@ class doe_analysis:
 
         """
         front_factors = self.response_info.at[
-            response, 'model_string'].calc_front_factors(coded_values)
+            response, 'model_tools'].calc_front_factors(coded_values)
         return (front_factors *
-                self.response_info.at[response, 'model'].params).sum()
+                self.model_coefs(response)).sum()
+
+    def model_coefs(self, response):
+        return self.response_info.at[response, 'model'].params
 
     def model_metrics(self):
         """
@@ -349,7 +356,7 @@ class doe_analysis:
                 self.predicted()[curr_response], self.actual()[curr_response])
             model_metrics.at[curr_response, 'model_equation'] = (
                 self.response_info.at[
-                    curr_response, 'model_string'].model_string())
+                    curr_response, 'model_tools'].model_string())
         return model_metrics
 
     def anova_table(self, response):
@@ -520,7 +527,7 @@ class doe_analysis:
 
         return (fig, ax)
 
-    def residual_vs_quartile(self, response,
+    def residual_vs_quantile(self, response,
                              residual_kind='externally_studentized'):
         fig, ax = plt.subplots()
         resid = self.residuals(kind=residual_kind)[response]
@@ -584,9 +591,13 @@ class doe_analysis:
         lambdas = np.linspace(-3, 3, 50)
         bc_llf = np.empty_like(lambdas)
         for ii, curr_lambda in enumerate(lambdas):
+            curr_data = self.data[response].copy()
+            if (curr_data < 0).any():
+                # Make sure that data is positive
+                curr_data -= curr_data.min()-1
             bc_llf[ii] = scipy.stats.boxcox_llf(curr_lambda,
-                                                self.data[response])
-        _, best_lambda, conf_int = scipy.stats.boxcox(self.data[response],
+                                                curr_data)
+        _, best_lambda, conf_int = scipy.stats.boxcox(curr_data,
                                                       alpha=0.05)
         ax.axvline(
             best_lambda, c='k', ls='--', label='$\lambda=${}$\pm${}'.format(
