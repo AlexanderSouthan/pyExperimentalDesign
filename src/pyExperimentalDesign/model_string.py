@@ -45,7 +45,7 @@ class model_string:
         # list have to be updated
         self.model_types = ['linear', '2fi', '3fi', 'quadratic']
         self.model_type = model_type
-        self.param_names = param_names
+        self.param_names = np.asarray(param_names)
         if param_types is None:
             self.param_types = ['cont']*len(param_names)
         else:
@@ -177,3 +177,67 @@ class model_string:
             if (deps*self.param_combinations['mask']).any():
                 self.param_combinations.at[curr_combi, 'for_hierarchy'] = True
                 self.param_combinations.at[curr_combi, 'mask'] = True
+
+    def calc_front_factors(self, coded_values):
+        """
+        Calcualte the front factors of the individual model terms.
+
+        Calculation is done for a set of coded values, i.e. values that are
+        between -1 and 1. The result is useful for a quick calculation of
+        model predictions using self.calc_model_values.
+
+        Parameters
+        ----------
+        coded_values : list of int
+            A list containing the coded values, i.e. values between -1 and 1
+            are allowed. The list should contain as many elements as the model
+            used for data analysis has.
+
+        Returns
+        -------
+        front_factors : Series
+            The front factors for the individual model terms. The index is the
+            same like in the params property of the models, so the two Series
+            can be used for calculations easily.
+
+        """
+        front_factors = pd.Series([1], index=['Intercept'], dtype='float')
+        # # linear terms
+        # for curr_value, curr_name in zip(coded_values, self.param_names):
+        #     front_factors[curr_name] = curr_value
+        # # two-factor interactions
+        # if self.model_type in self.model_types[1:4]: #  '2fi', '3fi', 'quadratic'
+        #     for subset_values, subset_names in zip(
+        #             itertools.combinations(coded_values, 2),
+        #             itertools.combinations(self.param_names, 2)):
+        #         front_factors['{}'.format(
+        #             ":".join(i for i in subset_names))] = np.prod(
+        #                 subset_values)
+        # # three-factor interactions
+        # if self.model_type == self.model_types[2]:  # '3fi'
+        #     for subset_values, subset_names in zip(
+        #             itertools.combinations(coded_values, 3),
+        #             itertools.combinations(self.param_names, 3)):
+        #         front_factors['{}'.format(
+        #             "*".join(i for i in subset_names))] = np.prod(
+        #                 subset_values)
+        # # quadratic terms
+        # if self.model_type == self.model_types[3]:  # 'quadratic'
+        #     for curr_value, curr_name in zip(coded_values, self.param_names):
+        #         front_factors['{}:{}'.format(curr_name, curr_name)] = (
+        #             curr_value**2)
+
+        # The following code tries to take advantage of the calculations done
+        # in the model_string objects already, however is much slower than
+        # repeating the calculations as done above. It is preferred to the code
+        # above nontheless in order to avoid inconsistency.
+
+        coded_values = np.asarray(coded_values)
+        combi_matrix = self.param_combinations[self.param_names]
+        for curr_combi in combi_matrix.index:
+            curr_mask = combi_matrix.loc[curr_combi].astype(bool)
+            front_factors[curr_combi] = np.product(
+                coded_values[curr_mask]**combi_matrix.loc[curr_combi,
+                                                          curr_mask])
+
+        return front_factors
