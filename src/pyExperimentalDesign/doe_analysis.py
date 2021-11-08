@@ -233,7 +233,7 @@ class doe_analysis:
                     self.data[curr_col] == curr_level,
                     self.param_info.at[curr_col, 'coded_name']] = curr_coded
 
-    def perform_anova(self, model=None):
+    def perform_anova(self):
         """
         Perform the actual ANOVA.
 
@@ -242,24 +242,13 @@ class doe_analysis:
 
         Parameters
         ----------
-        model : string, optional
-            If a model is given, the model is used for the calculations.
-            Otherwise, the model passed upon initialization is used. The
-            default is None.
+        None.
 
         Returns
         -------
         None.
 
         """
-        if model is not None:
-            if model in self.model_types:
-                self.replace_model(model)
-            else:
-                raise ValueError('No valid model given. \'{}\' was given, '
-                                 'but it should be an element of {}.'.format(
-                                     model, self.model_types))
-
         self.response_info['model'] = None
         self.response_info['anova_tables'] = None
         self.response_info['influences'] = None
