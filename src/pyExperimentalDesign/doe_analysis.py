@@ -14,6 +14,7 @@ from statsmodels.tools.eval_measures import rmse
 import matplotlib.pyplot as plt
 
 from .model_tools import model_tools
+from .response import response
 
 
 class doe_analysis:
@@ -82,16 +83,12 @@ class doe_analysis:
         # list have to be updated
         self.model_types = ['linear', '2fi', '3fi', 'quadratic']
 
-        self.response_info = pd.DataFrame([], index=response_columns)
-        # self.response_info['coded_name'] = [
-        #     'R{}'.format(ii+1) for ii in range(len(response_columns))]
+        self.responses = dict.fromkeys(response_columns)
         if response_units is None:
-            self.response_info['unit'] = 1
-        else:
-            self.response_info['unit'] = response_units
-        self.response_info['model_type'] = None
-        self.response_info['model'] = None
-        self.response_info['model_tools'] = None
+            response_units = [None]*len(response_columns)
+        for curr_key, curr_unit in zip(self.responses, response_units):
+            self.responses[curr_key] = response(curr_key, unit=curr_unit)
+
         if models is None:
             models = ['2fi']*len(response_columns)
         self.replace_model(response_columns, models)
@@ -154,7 +151,7 @@ class doe_analysis:
         ----------
         responses : list
             A list of responses for which the new_models are used. Must be
-            elements of self.response_info.index.
+            elements of self.responses.keys().
         new_models : list of string
             A list of the new models used for data analysis. Must have the same
             number of elements like responses and only values in
@@ -169,11 +166,11 @@ class doe_analysis:
             raise ValueError('responses and new_models should have equal '
                              'length, but are {} and {}, respectively.'.format(
                                  len(responses), len(new_models)))
-        if not set(responses).issubset(self.response_info.index.to_list()):
+        if not set(responses).issubset(self.responses.keys()):
             raise ValueError(
                 'At least one element of responses is not valid. {} was '
                 'given, and only elements from {} are allowed.'.format(
-                    responses, self.response_info.index.to_list()))
+                    responses, self.responses.keys()))
         if not set(new_models).issubset(self.model_types):
             raise ValueError(
                 'At least one element of new_models is not valid. {} was '
@@ -182,14 +179,11 @@ class doe_analysis:
 
         model_tools_all = []
         for curr_response, curr_model in zip(responses, new_models):
-            model_tools_all.append(
-                model_tools(curr_model, self.param_info['coded_name'].values,
-                            param_types=self.param_info['type'].values,
-                            response_name=curr_response))
-
-        self.response_info.loc[responses, 'model_type'] = new_models
-        self.response_info.loc[responses, 'model_tools'] = (
-            model_tools_all)
+            self.responses[curr_response].model_tools =  model_tools(
+                curr_model, self.param_info['coded_name'].values,
+                param_types=self.param_info['type'].values,
+                response_name=curr_response)
+            self.responses[curr_response].model_type = curr_model
 
     def encode_cont_columns(self):
         """
@@ -249,20 +243,16 @@ class doe_analysis:
         None.
 
         """
-        self.response_info['model'] = None
-        self.response_info['anova_tables'] = None
-        self.response_info['influences'] = None
-        for curr_response in self.response_info.index.values:
+        for curr_key, curr_response in self.responses.items():
             counter = 1
-            combi_mask = pd.Series(True, index=self.response_info.at[
-                curr_response, 'model_tools'].param_combinations.index)
+            combi_mask = pd.Series(
+                True, index=curr_response.model_tools.param_combinations.index)
             while True:
                 # Generate model
                 # Categorial variables can be added with C(variable)
                 # see https://www.statsmodels.org/dev/example_formulas.html
                 # An intercept is added by default
-                curr_model_tools = self.response_info.at[
-                    curr_response, 'model_tools']
+                curr_model_tools = curr_response.model_tools
                 curr_model = ols(
                     curr_model_tools.model_string(combi_mask=combi_mask),
                     data=self.data).fit()
@@ -275,24 +265,20 @@ class doe_analysis:
                         'for_hierarchy'] == True].index.to_list())
                 curr_p = curr_anova.loc[curr_p_mask, 'PR(>F)']
                 if (curr_p <= self.p_limit).all():
-                    print('ANOVA runs for {}: {}'.format(curr_response,
-                                                         counter))
+                    print('ANOVA runs for {}: {}'.format(curr_key, counter))
                     break
                 else:
                     combi_mask = curr_p <= self.p_limit
-                    combi_mask = combi_mask.reindex(self.response_info.at[
-                        curr_response,
-                        'model_tools'].param_combinations.index,
+                    combi_mask = combi_mask.reindex(
+                        curr_response.model_tools.param_combinations.index,
                         fill_value=False)
                     counter += 1
 
-            self.response_info.at[curr_response, 'model'] = curr_model
-            self.response_info.at[curr_response, 'anova_tables'] = curr_anova
-            self.response_info.at[curr_response, 'influences'] = (
-                self.response_info.at[curr_response,
-                                      'model'].get_influence())
-            self.data[curr_response + '_fitted'] = self.response_info.at[
-                curr_response, 'model'].fittedvalues
+            curr_response.model = curr_model
+            curr_response.anova_table = curr_anova
+            curr_response.influences = (curr_response.model.get_influence())
+            self.data[curr_key + '_fitted'] = (
+                curr_response.model.fittedvalues)
 
     def calc_model_value(self, response, coded_values):
         """
@@ -304,7 +290,7 @@ class doe_analysis:
         ----------
         response : string
             The name of the response for which the model values are calculated.
-            Must be an element of self.response_info.index.
+            Must be an element of self.responses.keys().
         coded_values : list of float
             A list containing one set of coded parameter values. Must contain
             as many elements as there are parameters in the model.
@@ -315,13 +301,14 @@ class doe_analysis:
             The predicted response value for the parameter settings.
 
         """
-        front_factors = self.response_info.at[
-            response, 'model_tools'].calc_front_factors(coded_values)
+        front_factors = (
+            self.responses[response].model_tools.calc_front_factors(
+                coded_values))
         return (front_factors *
                 self.model_coefs(response)).sum()
 
     def model_coefs(self, response):
-        return self.response_info.at[response, 'model'].params
+        return self.responses[response].model.params
 
     def model_metrics(self):
         """
@@ -336,16 +323,14 @@ class doe_analysis:
         """
         model_metrics = pd.DataFrame([], columns=['R^2', 'R^2_adj', 'RMSE',
                                                   'model_equation'])
-        for curr_response in self.response_info.index:
-            model_metrics.at[curr_response, 'R^2'] = self.response_info.at[
-                curr_response, 'model'].rsquared
-            model_metrics.at[curr_response, 'R^2_adj'] = self.response_info.at[
-                curr_response, 'model'].rsquared_adj
-            model_metrics.at[curr_response, 'RMSE'] = rmse(
-                self.predicted()[curr_response], self.actual()[curr_response])
-            model_metrics.at[curr_response, 'model_equation'] = (
-                self.response_info.at[
-                    curr_response, 'model_tools'].model_string())
+        for curr_key, curr_response in self.responses.items():
+            model_metrics.at[curr_key, 'R^2'] = curr_response.model.rsquared
+            model_metrics.at[curr_key, 'R^2_adj'] = (
+                curr_response.model.rsquared_adj)
+            model_metrics.at[curr_key, 'RMSE'] = rmse(
+                self.predicted()[curr_key], self.actual()[curr_key])
+            model_metrics.at[curr_key, 'model_equation'] = (
+                curr_response.model_tools.model_string())
         return model_metrics
 
     def anova_table(self, response):
@@ -363,7 +348,7 @@ class doe_analysis:
             The ANOVA table.
 
         """
-        return self.response_info.at[response, 'anova_tables']
+        return self.responses[response].anova_table
 
     def residuals(self, kind='externally_studentized'):
         """
@@ -383,18 +368,17 @@ class doe_analysis:
             Has the same index like self.data.
 
         """
-        resids = pd.DataFrame([], columns=self.response_info.index,
+        resids = pd.DataFrame([], columns=self.responses.keys(),
                               index=self.data.index, dtype='float')
-        for curr_response in resids.columns:
+        for curr_key, curr_response in self.responses.items():
             if kind == 'externally_studentized':
-                resids[curr_response] = self.response_info.at[
-                    curr_response, 'influences'].resid_studentized_external
+                resids[curr_key] = (
+                    curr_response.influences.resid_studentized_external)
             elif kind == 'internally_studentized':
-                resids[curr_response] = self.response_info.at[
-                    curr_response, 'influences'].resid_studentized_internal
+                resids[curr_key] = (
+                    curr_response.influences.resid_studentized_internal)
             elif kind == 'plain':
-                resids[curr_response] = self.response_info.at[
-                    curr_response, 'influences'].resid
+                resids[curr_key] = curr_response.influences.resid
             else:
                 raise ValueError('Value for kind is \'{}\', but must be one of'
                                  ' the following strings: '
@@ -462,43 +446,40 @@ class doe_analysis:
         return theo_resid_percentiles
 
     def leverages(self):
-        leverages = pd.DataFrame([], columns=self.response_info.index,
+        leverages = pd.DataFrame([], columns=self.responses.keys(),
                                  index=self.data.index, dtype='float')
-        for curr_response in leverages.columns:
-            leverages[curr_response] = self.response_info.at[
-                curr_response, 'influences'].hat_matrix_diag
+        for curr_key, curr_response in self.responses.items():
+            leverages[curr_key] = curr_response.influences.hat_matrix_diag
         return leverages
 
     def cooks_distances(self):
-        cooks_distances = pd.DataFrame([], columns=self.response_info.index,
+        cooks_distances = pd.DataFrame([], columns=self.responses.keys(),
                                        index=self.data.index, dtype='float')
-        for curr_response in cooks_distances.columns:
-            cooks_distances[curr_response] = self.response_info.at[
-                curr_response, 'influences'].cooks_distance[0]
+        for curr_key, curr_response in self.responses.items():
+            cooks_distances[curr_key] = (
+                curr_response.influences.cooks_distance[0])
         return cooks_distances
 
     def dffits(self):
-        dffits = pd.DataFrame([], columns=self.response_info.index,
+        dffits = pd.DataFrame([], columns=self.responses.keys(),
                               index=self.data.index, dtype='float')
-        for curr_response in dffits.columns:
-            dffits[curr_response] = self.response_info.at[
-                curr_response, 'influences'].dffits[0]
+        for curr_key, curr_response in self.responses.items():
+            dffits[curr_key] = curr_response.influences.dffits[0]
         return dffits
 
     def dfbetas(self):
-        dfbetas = pd.DataFrame([], columns=self.response_info.index,
+        dfbetas = pd.DataFrame([], columns=self.responses.keys(),
                                index=self.data.index, dtype='float')
-        for curr_response in dfbetas.columns:
-            dfbetas[curr_response] = self.response_info.at[
-                curr_response, 'influences'].dfbetas
+        for curr_key, curr_response in self.responses.items():
+            dfbetas[curr_key] = curr_response.influences.dfbetas
         return dfbetas
 
     def actual(self):
-        return self.data[self.response_info.index]
+        return self.data[self.responses.keys()]
 
     def predicted(self):
-        predicted = self.data[self.response_info.index + '_fitted']
-        predicted.columns = self.response_info.index
+        predicted = self.data[[str(key) + '_fitted' for key in self.responses]]
+        predicted.columns = self.responses.keys()
         return predicted
 
     def actual_vs_predicted(self, response):
