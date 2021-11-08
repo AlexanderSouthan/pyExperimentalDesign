@@ -1,7 +1,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 [![build workflow](https://github.com/AlexanderSouthan/pyExperimentalDesign/actions/workflows/main.yml/badge.svg)](https://github.com/AlexanderSouthan/pyExperimentalDesign/actions/workflows/main.yml)
 [![codecov](https://codecov.io/gh/AlexanderSouthan/pyExperimentalDesign/branch/master/graph/badge.svg?token=E17XE4FR6H)](https://codecov.io/gh/AlexanderSouthan/pyExperimentalDesign)
-[![Codacy Badge](https://app.codacy.com/project/badge/Grade/d1c28cb953da4ff9803ab8e3f056c452)](https://www.codacy.com/gh/AlexanderSouthan/pyExperimentalDesign/dashboard?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=AlexanderSouthan/pyExperimentalDesign&amp;utm_campaign=Badge_Grade)
 
 # pyExperimentalDesign
 
