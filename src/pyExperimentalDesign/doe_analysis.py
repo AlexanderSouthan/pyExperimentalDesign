@@ -15,11 +15,13 @@ import matplotlib.pyplot as plt
 
 from .model_tools import model_tools
 from .response import response
+from .parameter import parameter
 
 
 class doe_analysis:
     def __init__(self, data, param_columns, param_types, response_columns,
-                 response_units=None, models=None, p_limit=1):
+                 param_units=None, response_units=None, models=None,
+                 p_limit=1):
         """
         Initialize an experimental_design instance.
 
@@ -71,13 +73,23 @@ class doe_analysis:
         for curr_col in response_columns:
             self.data[curr_col] = pd.to_numeric(self.data[curr_col])
         self.p_limit = p_limit
+        self.param_types = param_types
 
-        self.param_info = pd.DataFrame([], index=param_columns)
-        self.param_info['coded_name'] = ['P{}'.format(ii+1)
-                                         for ii in range(len(param_columns))]
-        self.param_info['lower_bound'] = data[param_columns].min()
-        self.param_info['upper_bound'] = data[param_columns].max()
-        self.param_info['type'] = param_types
+        self.params = dict.fromkeys(param_columns)
+        if param_units is None:
+            param_units = [None]*len(param_columns)
+        coded_names = ['P{}'.format(ii+1) for ii,_ in enumerate(param_columns)]
+        for curr_key, curr_unit, curr_type, curr_coded in zip(
+                self.params, param_units, param_types, coded_names):
+            if curr_type == 'cont':
+                self.params[curr_key] = parameter(
+                    curr_key, ptype=curr_type, unit=curr_unit,
+                    coded_name=curr_coded, limits=[
+                        data[curr_key].min(), data[curr_key].max()])
+            elif curr_type == 'categ':
+                self.params[curr_key] = parameter(
+                    curr_key, ptype=curr_type, unit=curr_unit,
+                    coded_name=curr_coded, levels=data[curr_key].unique())
 
         # Careful when adding another model, all references to the following
         # list have to be updated
@@ -93,8 +105,7 @@ class doe_analysis:
             models = ['2fi']*len(response_columns)
         self.replace_model(response_columns, models)
 
-        self.encode_cont_columns()
-        self.encode_categ_columns(['Yes', 'No'], [-1, 1])
+        self.encode_param_columns()
 
         self.perform_anova()
 
@@ -111,7 +122,7 @@ class doe_analysis:
 
         """
         return self.data.groupby(
-            self.param_info['coded_name'].to_list()).mean()
+            self.coded_param_names()).mean()
 
     def data_std(self):
         """
@@ -126,7 +137,7 @@ class doe_analysis:
 
         """
         return self.data.groupby(
-            self.param_info['coded_name'].to_list()).std()
+            self.coded_param_names()).std()
 
     def data_n(self):
         """
@@ -141,7 +152,7 @@ class doe_analysis:
 
         """
         return self.data.groupby(
-            self.param_info['coded_name'].to_list()).size()
+            self.coded_param_names()).size()
 
     def replace_model(self, responses, new_models):
         """
@@ -177,54 +188,48 @@ class doe_analysis:
                 'given, and only elements from {} are allowed.'.format(
                     new_models, self.model_types))
 
-        for curr_response, curr_model in zip(responses, new_models):
-            self.responses[curr_response].model_tools =  model_tools(
-                curr_model, self.param_info['coded_name'].values,
-                param_types=self.param_info['type'].values,
+        for curr_response, curr_param, curr_model in zip(
+                responses, self.params, new_models):
+            self.responses[curr_response].model_tools = model_tools(
+                curr_model, self.coded_param_names(),
+                param_types=self.param_types,
                 response_name=curr_response)
             self.responses[curr_response].model_type = curr_model
 
-    def encode_cont_columns(self):
+    def coded_param_names(self):
+        coded_names = []
+        for _, curr_p in self.params.items():
+            coded_names.append(curr_p.coded_name)
+        return coded_names
+
+    def encode_param_columns(self):
         """
         Encode the continuous/numerical parameters to a scale between -1 and 1.
+        
+        Also encode categorial parameters. However, the coded values are also
+        scaled between -1 and 1, this might only make sense for catergorial
+        parameters with two levels.
 
         Returns
         -------
         None.
 
         """
-        for curr_row in self.param_info[
-                self.param_info['type'] == 'cont'].index.values:
-            max_value = self.param_info.at[curr_row, 'upper_bound']
-            min_value = self.param_info.at[curr_row, 'lower_bound']
-            self.data[self.param_info.at[curr_row, 'coded_name']] = (
-                2/(max_value-min_value)*(self.data[curr_row]-max_value)+1
-                ).astype('float').round(10)
-
-    def encode_categ_columns(self, levels, coded_values):
-        """
-        Encode categorial parameters.
-
-        Parameters
-        ----------
-        levels : list
-            The allowed levels of the categorial parameters.
-        coded_values : list of numbers
-            The numerical values used to encode the different values of the
-            categorial parameters.
-
-        Returns
-        -------
-        None.
-
-        """
-        for curr_col in self.param_info[
-                self.param_info['type'] == 'categ'].index.values:
-            self.data[self.param_info.at[curr_col, 'coded_name']] = np.nan
-            for curr_level, curr_coded in zip(levels, coded_values):
-                self.data.loc[
-                    self.data[curr_col] == curr_level,
-                    self.param_info.at[curr_col, 'coded_name']] = curr_coded
+        for curr_key, curr_param in self.params.items():
+            if curr_param.type == 'cont':
+                max_value = curr_param.upper_bound
+                min_value = curr_param.lower_bound
+                self.data[curr_param.coded_name] = (
+                    2/(max_value-min_value)*(self.data[curr_key]-max_value)+1
+                    ).astype('float').round(10)
+            elif curr_param.type == 'categ':
+                coded_levels = np.linspace(
+                    -1, 1, num=len(curr_param.levels), endpoint=True)
+                self.data[curr_param.coded_name] = np.nan
+                for curr_level, curr_coded in zip(
+                        curr_param.levels, coded_levels):
+                    self.data.loc[self.data[curr_param.name] == curr_level,
+                                  curr_param.coded_name] = curr_coded
 
     def perform_anova(self):
         """
