@@ -83,8 +83,8 @@ class doe_analysis:
         self.model_types = ['linear', '2fi', '3fi', 'quadratic']
 
         self.response_info = pd.DataFrame([], index=response_columns)
-        self.response_info['coded_name'] = [
-            'R{}'.format(ii+1) for ii in range(len(response_columns))]
+        # self.response_info['coded_name'] = [
+        #     'R{}'.format(ii+1) for ii in range(len(response_columns))]
         if response_units is None:
             self.response_info['unit'] = 1
         else:
