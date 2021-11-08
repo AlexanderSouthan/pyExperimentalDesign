@@ -177,7 +177,6 @@ class doe_analysis:
                 'given, and only elements from {} are allowed.'.format(
                     new_models, self.model_types))
 
-        model_tools_all = []
         for curr_response, curr_model in zip(responses, new_models):
             self.responses[curr_response].model_tools =  model_tools(
                 curr_model, self.param_info['coded_name'].values,
