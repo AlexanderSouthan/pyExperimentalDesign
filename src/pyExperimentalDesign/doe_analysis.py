@@ -21,7 +21,7 @@ from .parameter import parameter
 class doe_analysis:
     def __init__(self, data, param_columns, param_types, response_columns,
                  param_units=None, response_units=None, models=None,
-                 p_limit=1):
+                 p_limits=None):
         """
         Initialize an experimental_design instance.
 
@@ -51,11 +51,11 @@ class doe_analysis:
             must have the same number of elements like response_columns. The
             default is None, meaning a two-factor interaction ('2fi') model for
             all responses. Other allowed values are in self.model_types.
-        p_limit : float, optional
-            The upper threshold of allowed p values of the model terms. All
+        p_limits : list of float, optional
+            The upper thresholds of allowed p values of the model terms. All
             model terms with p values higher than the threshold will be
-            excluded from the analysis. Default is 1, resuling in no exclusion
-            of any model term.
+            excluded from the analysis. Default is None, resuling in no
+            exclusion of any model term.
 
         Returns
         -------
@@ -72,7 +72,10 @@ class doe_analysis:
         # Dtype of object which might occur in mixed Dtype DataFrames.
         for curr_col in response_columns:
             self.data[curr_col] = pd.to_numeric(self.data[curr_col])
-        self.p_limit = p_limit
+        if p_limits is None:
+            self.p_limits = [1]*len(response_columns)
+        else:
+            self.p_limits = p_limits
         self.param_types = param_types
 
         self.params = dict.fromkeys(param_columns)
@@ -93,7 +96,8 @@ class doe_analysis:
 
         # Careful when adding another model, all references to the following
         # list have to be updated
-        self.model_types = ['linear', '2fi', '3fi', 'quadratic']
+        self.model_types = ['linear', '2fi', '3fi', 'quadratic',
+                            'quadratic+3fi']
 
         self.responses = dict.fromkeys(response_columns)
         if response_units is None:
@@ -188,8 +192,8 @@ class doe_analysis:
                 'given, and only elements from {} are allowed.'.format(
                     new_models, self.model_types))
 
-        for curr_response, curr_param, curr_model in zip(
-                responses, self.params, new_models):
+        for curr_response, curr_model in zip(
+                responses, new_models):
             self.responses[curr_response].model_tools = model_tools(
                 curr_model, self.coded_param_names(),
                 param_types=self.param_types,
@@ -247,7 +251,8 @@ class doe_analysis:
         None.
 
         """
-        for curr_key, curr_response in self.responses.items():
+        for (curr_key, curr_response), curr_p_limit in zip(
+                self.responses.items(), self.p_limits):
             counter = 1
             combi_mask = pd.Series(
                 True, index=curr_response.model_tools.param_combinations.index)
@@ -268,11 +273,11 @@ class doe_analysis:
                     ['Residual'] + par_c[par_c[
                         'for_hierarchy'] == True].index.to_list())
                 curr_p = curr_anova.loc[curr_p_mask, 'PR(>F)']
-                if (curr_p <= self.p_limit).all():
+                if (curr_p <= curr_p_limit).all():
                     print('ANOVA runs for {}: {}'.format(curr_key, counter))
                     break
                 else:
-                    combi_mask = curr_p <= self.p_limit
+                    combi_mask = curr_p <= curr_p_limit
                     combi_mask = combi_mask.reindex(
                         curr_response.model_tools.param_combinations.index,
                         fill_value=False)
@@ -325,17 +330,36 @@ class doe_analysis:
             for all responses.
 
         """
-        model_metrics = pd.DataFrame([], columns=['R^2', 'R^2_adj', 'RMSE',
-                                                  'model_equation'])
+        model_metrics = pd.DataFrame(
+            [], columns=['R^2', 'R^2_adj', 'RMSE', 'model_p',
+                         'model_equation'])
         for curr_key, curr_response in self.responses.items():
             model_metrics.at[curr_key, 'R^2'] = curr_response.model.rsquared
             model_metrics.at[curr_key, 'R^2_adj'] = (
                 curr_response.model.rsquared_adj)
             model_metrics.at[curr_key, 'RMSE'] = rmse(
                 self.predicted()[curr_key], self.actual()[curr_key])
+            model_metrics.at[curr_key, 'model_p'] = 0
             model_metrics.at[curr_key, 'model_equation'] = (
                 curr_response.model_tools.model_string())
         return model_metrics
+
+    def model_summary(self, response):
+        """
+        Return the statsmodels summary for the model.
+
+        Parameters
+        ----------
+        response : TYPE
+            The name of the response for which the model summary is returned.
+
+        Returns
+        -------
+        iolib.summary.Summary
+            The model summary.
+
+        """
+        return self.responses[response].model.summary()
 
     def anova_table(self, response):
         """
@@ -375,14 +399,15 @@ class doe_analysis:
         resids = pd.DataFrame([], columns=self.responses.keys(),
                               index=self.data.index, dtype='float')
         for curr_key, curr_response in self.responses.items():
+            curr_mask = self.data[curr_key].dropna().index
             if kind == 'externally_studentized':
-                resids[curr_key] = (
+                resids.loc[curr_mask, curr_key] = (
                     curr_response.influences.resid_studentized_external)
             elif kind == 'internally_studentized':
-                resids[curr_key] = (
+                resids.loc[curr_mask, curr_key] = (
                     curr_response.influences.resid_studentized_internal)
             elif kind == 'plain':
-                resids[curr_key] = curr_response.influences.resid
+                resids.loc[curr_mask, curr_key] = curr_response.influences.resid
             else:
                 raise ValueError('Value for kind is \'{}\', but must be one of'
                                  ' the following strings: '

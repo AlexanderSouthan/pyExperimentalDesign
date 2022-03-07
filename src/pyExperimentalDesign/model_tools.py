@@ -7,7 +7,7 @@ Created on Fri Nov  5 21:26:39 2021
 
 import numpy as np
 import pandas as pd
-import itertools
+from itertools import combinations, combinations_with_replacement
 
 
 class model_tools:
@@ -43,7 +43,8 @@ class model_tools:
         """
         # Careful when adding another model, all references to the following
         # list have to be updated
-        self.model_types = ['linear', '2fi', '3fi', 'quadratic']
+        self.model_types = ['linear', '2fi', '3fi', 'quadratic',
+                            'quadratic+3fi']
         self.model_type = model_type
         self.param_names = np.asarray(param_names)
         if param_types is None:
@@ -70,8 +71,9 @@ class model_tools:
             self.param_names)
 
         # two-factor interactions
-        if self.model_type in self.model_types[1:4]: #  '2fi', '3fi', 'quadratic'
-            for subset in itertools.combinations(param_numbers, 2):
+        if self.model_type in self.model_types[1:5]: #  '2fi', '3fi', 'quadratic', 'quadratic+3fi'
+            simple_2fi = list(combinations(param_numbers, 2))
+            for subset in simple_2fi:
                 curr_idx = ':'.join(i for i in self.param_names[list(subset)])
                 curr_string = '*'.join(i for i in self.param_names[list(subset)])
                 self.param_combinations.at[curr_idx, 'string'] = curr_string
@@ -79,10 +81,29 @@ class model_tools:
                 curr_combi = np.zeros_like(self.param_names, dtype='int')
                 curr_combi[list(subset)] = 1
                 combi_array = np.append(combi_array, [curr_combi], axis=0)
+
+        # quadratic 2fi terms
+        if self.model_type in self.model_types[3:5]:  # 'quadratic', 'quadratic+3fi'
+            all_2fi = list(combinations_with_replacement(param_numbers, 2))
+            quadratic_mask = [True if curr_2fi not in simple_2fi else False
+                              for curr_2fi in all_2fi]
+            for subset in np.array(all_2fi)[quadratic_mask]:
+                curr_idx = 'I({} * {})'.format(*self.param_names[subset])
+                curr_string = 'I({}*{})'.format(*self.param_names[subset])
+                self.param_combinations.at[curr_idx, 'string'] = curr_string
+
+                curr_combi = np.zeros_like(self.param_names, dtype='int')
+                curr_combi[list(subset)] = 2
+                combi_array = np.append(combi_array, [curr_combi], axis=0)
+
+            # curr_combi = np.diag(np.full_like(self.param_names, 2,
+            #                                   dtype='int'))
+            # combi_array = np.append(combi_array, curr_combi, axis=0)
 
         # three-factor interactions
-        if self.model_type == self.model_types[2]:  # '3fi'
-            for subset in itertools.combinations(param_numbers, 3):
+        if self.model_type in [self.model_types[2], self.model_types[4]]:  # '3fi', 'quadratic+3fi'
+            simple_3fi = list(combinations(param_numbers, 3))
+            for subset in simple_3fi:
                 curr_idx = ':'.join(i for i in self.param_names[list(subset)])
                 curr_string = '*'.join(i for i in self.param_names[list(subset)])
                 self.param_combinations.at[curr_idx, 'string'] = curr_string
@@ -91,23 +112,27 @@ class model_tools:
                 curr_combi[list(subset)] = 1
                 combi_array = np.append(combi_array, [curr_combi], axis=0)
 
-        # quadratic terms
-        if self.model_type == self.model_types[3]:  # 'quadratic'
-            for curr_name in self.param_names:
-                curr_idx = 'I({} * {})'.format(curr_name, curr_name)
-                curr_string = 'I({}*{})'.format(curr_name, curr_name)
-                self.param_combinations.at[curr_idx, 'string'] = curr_string
+        # # quadratic 3fi terms
+        # if self.model_type == self.model_types[4]:  # 'quadratic+3fi'
+        #     all_3fi = list(combinations_with_replacement(param_numbers, 3))
+        #     quadratic_mask = [True if ((curr_3fi not in simple_3fi) & (not np.all(curr_3fi[0]==curr_3fi))) else False
+        #                       for curr_3fi in all_3fi]
+        #     for subset in np.array(all_3fi)[quadratic_mask]:
+        #         curr_idx = 'I({} * {} * {})'.format(*self.param_names[subset])
+        #         curr_string = 'I({}*{}*{})'.format(*self.param_names[subset])
+        #         self.param_combinations.at[curr_idx, 'string'] = curr_string
 
-            curr_combi = np.diag(np.full_like(self.param_names, 2,
-                                              dtype='int'))
-            combi_array = np.append(combi_array, curr_combi, axis=0)
+        #         curr_combi = np.zeros_like(self.param_names, dtype='int')
+        #         curr_combi[list(subset)] = 1
+        #         combi_array = np.append(combi_array, [curr_combi], axis=0)
+
 
         self.param_combinations[self.param_names] = combi_array
         self.param_combinations['mask'] = True
         self.param_combinations['for_hierarchy'] = False
 
         # Drop quadratic terms for categoric factors
-        if self.model_type == self.model_types[3]:  # 'quadratic'
+        if self.model_type in self.model_types[3:5]:  # 'quadratic', 'quadratic+3fi'
             for curr_name, curr_type in zip(self.param_names,
                                             self.param_types):
                 if curr_type == 'categ':
@@ -149,7 +174,7 @@ class model_tools:
     def check_hierarchy(self):
         """
         Check for hierarchy of the model implemented.
-        
+
         All entries with False in self.param_combinations['mask'] are checked
         if they should be included in the model for hierarchy. If this is
         found for a parameter or a parameter combination, the corresponding
