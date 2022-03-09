@@ -16,7 +16,7 @@ doe_plan = doe_plan(
     param_categ=['Comp_5'],
     center_rep=6, factorial_rep=3, star_rep=3)
 
-data, model_coefs = doe_plan.simulate_response('Resp_1', noise_level=2)
+data, model_coefs = doe_plan.simulate_response('Resp_1', noise_level=1.5)
 
 doe_analysis = doe_analysis(
     data,

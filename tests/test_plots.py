@@ -28,7 +28,7 @@ class TestExperimentalDesign(unittest.TestCase):
             data,
             ['Comp_1', 'Comp_2', 'Comp_3', 'Comp_4', 'Comp_5'],
             ['cont', 'cont', 'cont', 'cont', 'categ'],
-            ['Resp_1'], models=['2fi'], p_limit=1)
+            ['Resp_1'], models=['2fi'], p_limits=[1])
 
         fig1, ax1 = doe_anal.actual_vs_predicted('Resp_1')
         fig2, ax2 = doe_anal.residual_vs_quantile('Resp_1')
