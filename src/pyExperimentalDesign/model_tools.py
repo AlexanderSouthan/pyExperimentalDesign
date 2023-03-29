@@ -167,7 +167,7 @@ class model_tools:
         if check_hierarchy:
             self.check_hierarchy()
 
-        return '{} ~ {}'.format(
+        return '{} ~ {} + 1'.format(
             self.response_name, self.param_combinations.loc[
                 self.param_combinations['mask'], 'string'].str.cat(sep=' + '))
 
