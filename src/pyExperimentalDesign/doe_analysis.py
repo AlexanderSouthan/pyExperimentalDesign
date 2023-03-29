@@ -67,6 +67,12 @@ class doe_analysis:
                              'length, but are {} and {}, respectively.'.format(
                                  len(param_columns), len(param_types)))
 
+        if any([' ' in curr for curr in param_columns]):
+            raise ValueError('param_columns contains entries with spaces. '
+                             'Please make sure to remove the spaces from '
+                             'column names because they are passed directly to'
+                             ' statsmodels.formula.api.ols.')
+
         self.data = data
         # The next step is important for input DataFrames that have a column
         # Dtype of object which might occur in mixed Dtype DataFrames.
@@ -75,6 +81,11 @@ class doe_analysis:
         if p_limits is None:
             self.p_limits = [1]*len(response_columns)
         else:
+            if len(p_limits) != len(response_columns):
+                raise ValueError(
+                    'response_columns and p_limits should have equal '
+                    'length, but are {} and {}, respectively.'.format(
+                        len(response_columns), len(p_limits)))
             self.p_limits = p_limits
         self.param_types = param_types
 
@@ -209,7 +220,7 @@ class doe_analysis:
     def encode_param_columns(self):
         """
         Encode the continuous/numerical parameters to a scale between -1 and 1.
-        
+
         Also encode categorial parameters. However, the coded values are also
         scaled between -1 and 1, this might only make sense for catergorial
         parameters with two levels.
@@ -573,9 +584,11 @@ class doe_analysis:
     def residual_vs_predicted(self, response,
                               residual_kind='externally_studentized'):
         fig, ax = plt.subplots()
-        ax.plot(self.predicted()[response],
-                self.residuals(kind=residual_kind)[response], ls='none',
-                marker='o')
+        sorted_order = self.predicted()[response].argsort()
+        ax.plot(
+            self.predicted()[response].iloc[sorted_order],
+            self.residuals(kind=residual_kind)[response].iloc[sorted_order],
+            ls='-', marker='o')
         ax.set_xlabel(response + ' (predicted)')
         ax.set_ylabel(response + ' ' + residual_kind + ' residuals')
         ax.set_title('Residuals vs. predicted')
