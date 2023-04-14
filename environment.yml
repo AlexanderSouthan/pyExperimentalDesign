@@ -5,3 +5,6 @@ dependencies:
   - scipy
   - statsmodels
   - matplotlib
+  - pip
+  - pip:
+    - pyDataFitting
