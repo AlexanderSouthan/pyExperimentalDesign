@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import itertools
 
-from .model_tools import model_tools
+from pyDataFitting import model_tools
 
 
 class doe_plan:
