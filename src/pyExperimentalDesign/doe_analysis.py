@@ -13,7 +13,7 @@ from statsmodels.formula.api import ols
 from statsmodels.tools.eval_measures import rmse
 import matplotlib.pyplot as plt
 
-from .model_tools import model_tools
+from pyDataFitting import model_tools
 from .response import response
 from .parameter import parameter
 
@@ -272,14 +272,14 @@ class doe_analysis:
                 # Categorial variables can be added with C(variable)
                 # see https://www.statsmodels.org/dev/example_formulas.html
                 # An intercept is added by default
-                curr_model_tools = curr_response.model_tools
                 curr_model = ols(
-                    curr_model_tools.model_string(combi_mask=combi_mask),
+                    curr_response.model_tools.model_string(
+                        combi_mask=combi_mask, check_hierarchy=True),
                     data=self.data).fit()
                 # Perform the ANOVA
                 curr_anova = (sm.stats.anova_lm(curr_model, typ=2))
 
-                par_c = curr_model_tools.param_combinations
+                par_c = curr_response.model_tools.param_combinations
                 curr_p_mask = ~curr_anova.index.isin(
                     ['Residual'] + par_c[par_c[
                         'for_hierarchy'] == True].index.to_list())
@@ -321,11 +321,8 @@ class doe_analysis:
             The predicted response value for the parameter settings.
 
         """
-        front_factors = (
-            self.responses[response].model_tools.calc_front_factors(
-                coded_values))
-        return (front_factors *
-                self.model_coefs(response)).sum()
+        return self.responses[response].model_tools.calc_model_value(
+                coded_values, self.model_coefs(response))
 
     def model_coefs(self, response):
         return self.responses[response].model.params
@@ -352,7 +349,7 @@ class doe_analysis:
                 self.predicted()[curr_key], self.actual()[curr_key])
             model_metrics.at[curr_key, 'model_p'] = 0
             model_metrics.at[curr_key, 'model_equation'] = (
-                curr_response.model_tools.model_string())
+                curr_response.model_tools.model_string(check_hierarchy=False))
         return model_metrics
 
     def model_summary(self, response):
