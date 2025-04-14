@@ -1,5 +1,5 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![build workflow](https://github.com/AlexanderSouthan/pyExperimentalDesign/actions/workflows/main.yml/badge.svg)](https://github.com/AlexanderSouthan/pyExperimentalDesign/actions/workflows/main.yml)
+[![build workflow](https://github.com/AlexanderSouthan/pyExperimentalDesign/actions/workflows/python-package.yml/badge.svg)](https://github.com/AlexanderSouthan/pyExperimentalDesign/actions/workflows/python-package.yml)
 [![codecov](https://codecov.io/gh/AlexanderSouthan/pyExperimentalDesign/branch/master/graph/badge.svg?token=E17XE4FR6H)](https://codecov.io/gh/AlexanderSouthan/pyExperimentalDesign)
 [![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=AlexanderSouthan_pyExperimentalDesign&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=AlexanderSouthan_pyExperimentalDesign)
 
